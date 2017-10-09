@@ -5,6 +5,7 @@
 #include <string.h>
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <sys/wait.h>
 #include <netinet/in.h>
 #include <netdb.h>
 #include <arpa/inet.h>
@@ -38,6 +39,7 @@ void echo_ser()
            (struct sockaddr *)&servaddr, sizeof(servaddr));
     printf("Main: Send request packet to the Threat Database Update Service\n");
     ret = recvfrom(sock, recvbuf, sizeof(recvbuf), 0, NULL, NULL);
+    sleep(3);
     printf("Main: Receive updated information \"%s\"\n", recvbuf);
     if (ret == -1)
     {
@@ -51,24 +53,24 @@ int main(void)
 {
     printf("Main: Start Update Service\n");
 
-    /*
-     pid_t pid;
-     pid = fork();
-     int status;
 
-     if (pid < 0) {
-     fprintf(stderr, "error: %s\n", strerror(errno));
-     }
+    pid_t pid;
+    pid = fork();
+    int status;
 
-     if (pid == 0) {
-     status = execl("./client &", NULL);
-     }
-     */
+    if (pid < 0) {
+        fprintf(stderr, "error: %s\n", strerror(errno));
+    }
+
+    if (pid == 0) {
+        status = execl("./client &", NULL);
+    }
+    //sleep(3);
     while (1) {
+        sleep(2);
         echo_ser();
     }
 
     return 0;
 }
-
 

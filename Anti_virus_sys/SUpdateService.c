@@ -5,6 +5,8 @@
 #include <string.h>
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 #include <netinet/in.h>
 #include <netdb.h>
 #include <arpa/inet.h>
@@ -98,11 +100,29 @@ int listen_main_prog_request(){
         }
         else if(n > 0)
         {
-            printf("UpdateService: Received request：%s \n",recvbuf);
+            printf("UpdateService: Received request \n");
+            sendto(sock, recvbuf, n, 0,
+                   (struct sockaddr *)&peeraddr, peerlen);
             close(sock);
             return 10;
         }
     }
+    return 0;
+}
+
+int append_signature(char *signature){
+    int fd;
+    char db_path[] = "threat_db.txt";
+    fd = open(db_path, O_RDWR | O_APPEND | O_CREAT, 0700);
+    if (fd < 0) {
+        fprintf(stderr, "error: %s\n", strerror(errno));
+        exit(EXIT_FAILURE);
+    }
+    char appendn[] = "\n";
+    printf("Write into threat_db.txt with \"%s\"\n", signature);
+    write(fd, signature, strlen(signature));
+    write(fd, appendn, strlen(appendn));
+    close(fd);
     return 0;
 }
 
@@ -117,6 +137,7 @@ int main(int argc, const char * argv[])
             char signature[5];
             signature[4] = '\0';
             receive_virus_signature(signature);
+            append_signature(signature);
             printf("received signature: %s\n", signature);
         }
     }
