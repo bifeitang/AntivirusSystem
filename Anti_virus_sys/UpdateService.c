@@ -10,10 +10,16 @@
 #include <arpa/inet.h>
 
 #define MAXDATASIZE 100   /* Maxsize of bytes we read per time */
-#define UPDATEPORT "4950"
+#define UPDATEPORT  4950
 #define SERVERPORT  3490    /* Port to recevie TCP packages from server */
 #define BUFFER_SIZE 1024
 char* SERVER_IP = "127.0.0.1";
+
+#define ERR_EXIT(m) \
+do { \
+perror(m); \
+exit(EXIT_FAILURE); \
+} while (0)
 
 /* Get correspoinding IP address of server */
 void *get_in_addr(struct sockaddr *sa)
@@ -44,9 +50,9 @@ int receive_virus_signature(char *signature){
         perror("connect");
         exit(1);
     }
-    printf("Connection Established\n");
+    printf("UpdateService: Connection Established\n");
     recv(sock_cli, signature, sizeof(signature),0); //Receive Signature
-    printf("Virus Signature Received from server: %s\n",signature);
+    printf("UpdateService: Virus Signature Received from server: %s\n",signature);
 
     close(sock_cli);
     return 0;
@@ -54,78 +60,49 @@ int receive_virus_signature(char *signature){
 
 /* Receive datagram from main program */
 int listen_main_prog_request(){
-    int sockfd;
-    socklen_t addrlen;
-    int address_status;
-    ssize_t receive_bytes;
-    char buf[MAXDATASIZE];
-    int reuse_local_address = 1;
-    struct addrinfo hints, *serverinfo, *p;
-    struct sockaddr_storage main_addr;
+    int sock;
+    if ((sock = socket(PF_INET, SOCK_DGRAM, 0)) < 0)
+        ERR_EXIT("socket error");
 
-    /* Initialize some features for listening: IPv4/6, UDP, local_host's IP */
-    memset(&hints, 0, sizeof(hints));
-    hints.ai_family = AF_UNSPEC;
-    hints.ai_socktype = SOCK_DGRAM;
-    hints.ai_flags = AI_PASSIVE;
+    struct sockaddr_in servaddr;
+    memset(&servaddr, 0, sizeof(servaddr));
+    servaddr.sin_family = AF_INET;
+    servaddr.sin_port = htons(UPDATEPORT);
+    servaddr.sin_addr.s_addr = htonl(INADDR_ANY);
 
-    /* Make database_update_server listen on host's IP address on UPDATEPORT */
-    if((address_status = getaddrinfo(NULL, UPDATEPORT,
-                                     &hints, &serverinfo)) != 0){
-        fprintf(stderr, "getaddrinfo:%s\n", gai_strerror(address_status));
-        return EXIT_FAILURE;
-    }
+    printf("UpdateService: Listening to the request from main at:%d\n",UPDATEPORT);
+    if (bind(sock, (struct sockaddr *)&servaddr, sizeof(servaddr)) < 0)
+        ERR_EXIT("bind error");
 
-    /* Bind to the first valid serverinfo */
-    for (p = serverinfo; p != NULL; p = p->ai_next) {
+    /* Start waiting for data from main program */
+    char recvbuf[1024] = {0};
+    struct sockaddr_in peeraddr;
+    socklen_t peerlen;
+    int n;
 
-        /* Create socket with returned serverinfo, get socket_file_descriptor */
-        if((sockfd = socket(p->ai_family, p->ai_socktype,
-                            p->ai_protocol)) == -1){
-            fprintf(stderr, "errro: %s\n", strerror(errno));
-            continue;
+    while (1)
+    {
+        printf("UpdateService: Start Loop\n");
+
+        peerlen = sizeof(peeraddr);
+        memset(recvbuf, 0, sizeof(recvbuf));
+        n = recvfrom(sock, recvbuf, sizeof(recvbuf), 0,
+                     (struct sockaddr *)&peeraddr, &peerlen);
+        if (n <= 0)
+        {
+
+            if (errno == EINTR)
+                continue;
+
+            ERR_EXIT("recvfrom error");
         }
-
-        /* Enable port reuse to avoid "Address in use" problem */
-        if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR,
-                       &reuse_local_address, sizeof(int)) == -1) {
-            fprintf(stderr, "errro: %s\n", strerror(errno));
-            return EXIT_FAILURE;
+        else if(n > 0)
+        {
+            printf("UpdateService: Received request：%s \n",recvbuf);
+            close(sock);
+            return 10;
         }
-
-        /* bind socket the prot we passed in serverinfo */
-        if (bind(sockfd, p->ai_addr, p->ai_addrlen)) {
-            close(sockfd);
-            fprintf(stderr, "errro: %s\n", strerror(errno));
-            continue;
-        }
-        break;
     }
-
-    /* If there is no valid serverinfo */
-    if(p == NULL){
-        fprintf(stderr, "Update_listener: fail to bind\n");
-        return EXIT_FAILURE;
-    }
-
-    freeaddrinfo(serverinfo); /*No longer needs serverinfo*/
-
-    printf("Update_listener: waiting for update request from Main...\n");
-
-    while (1) {
-        /* Get request packet from main */
-        if (-1 == (receive_bytes = recvfrom(sockfd, buf,
-                                            MAXDATASIZE - 1, 0,
-                                            (struct sockaddr *)&main_addr,
-                                            &addrlen))) {
-            fprintf(stderr, "errro: %s\n", strerror(errno));
-        }
-        /* Print the received packet information */
-        buf[(int)receive_bytes] = '\0';
-        printf("Update_listener: get request \"%s\" from main\n", buf);
-    }
-
-    close(sockfd);
     return 0;
 }
 
@@ -133,9 +110,17 @@ int listen_main_prog_request(){
 
 int main(int argc, const char * argv[])
 {
-    char signature[5];
-    signature[4] = '\0';
-    receive_virus_signature(signature);
-    printf("received signature: %s\n", signature);
+    printf("Start Update Signature Service.\n");
+    while (1) {
+        int status = listen_main_prog_request();
+        if(status == 10){
+            char signature[5];
+            signature[4] = '\0';
+            receive_virus_signature(signature);
+            printf("received signature: %s\n", signature);
+        }
+    }
     return 0;
 }
+
+

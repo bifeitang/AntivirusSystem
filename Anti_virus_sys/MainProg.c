@@ -1,15 +1,15 @@
-
-#include<stdio.h>
-#include<stdlib.h>
-#include<unistd.h>
-#include<errno.h>
-#include<sys/types.h>
-#include<sys/socket.h>
-#include<netinet/in.h>
-#include<string.h>
-
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <errno.h>
+#include <string.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <netdb.h>
+#include <arpa/inet.h>
 #define UPDATEPORT 4950
-char* SERVERIP = "127.0.0.1";
+char *SERVERIP = "127.0.0.1";
 
 
 #define ERR_EXIT(m) \
@@ -29,7 +29,7 @@ void echo_ser()
     memset(&servaddr, 0, sizeof(servaddr));
     servaddr.sin_family = AF_INET;
     servaddr.sin_port = htons(UPDATEPORT);
-    servaddr.sin_addr.s_addr = inet_addr(UPDATEPORT);
+    servaddr.sin_addr.s_addr = inet_addr(SERVERIP);
 
     int ret;
     char *request_message = "Main: Request on port\n";
@@ -51,19 +51,24 @@ int main(void)
 {
     printf("Main: Start Update Service\n");
 
+    /*
+     pid_t pid;
+     pid = fork();
+     int status;
 
-    pid_t pid;
-    pid = fork();
-    int status;
+     if (pid < 0) {
+     fprintf(stderr, "error: %s\n", strerror(errno));
+     }
 
-    if (pid == 0) {
-        status = execl("./client", NULL);
-    }
-    else if (pid < 0){
-        fprintf(stderr, "error: %s\n", strerror(errno));
-    }
-    else{
+     if (pid == 0) {
+     status = execl("./client &", NULL);
+     }
+     */
+    while (1) {
         echo_ser();
     }
+
     return 0;
 }
+
+
