@@ -9,7 +9,6 @@
 #include <netdb.h>
 #include <arpa/inet.h>
 
-#define PORT "3490"
 #define MAXDATASIZE 100   /* Maxsize of bytes we read per time */
 #define UPDATEPORT "4950"
 #define SERVERPORT  3490    /* Port to recevie TCP packages from server */
@@ -140,5 +139,3 @@ int main(int argc, const char * argv[])
     printf("received signature: %s\n", signature);
     return 0;
 }
-
-
