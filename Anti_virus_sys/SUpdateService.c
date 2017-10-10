@@ -23,15 +23,6 @@ perror(m); \
 exit(EXIT_FAILURE); \
 } while (0)
 
-/* Get correspoinding IP address of server */
-void *get_in_addr(struct sockaddr *sa)
-{
-    if(sa->sa_family == AF_INET) {
-        return &(((struct sockaddr_in *)sa)->sin_addr);
-    }
-    return &(((struct sockaddr_in6 *)sa)->sin6_addr);
-}
-
 /* Receive Virus Signature */
 int receive_virus_signature(char *signature){
     //Init sockfd
@@ -110,6 +101,8 @@ int listen_main_prog_request(){
     return 0;
 }
 
+
+/* Update DB text file*/
 int append_signature(char *signature){
     int fd;
     char db_path[] = "threat_db.txt";
@@ -125,8 +118,6 @@ int append_signature(char *signature){
     close(fd);
     return 0;
 }
-
-/* Update DB text file*/
 
 int main(int argc, const char * argv[])
 {
