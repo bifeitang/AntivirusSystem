@@ -106,35 +106,45 @@ char **SF_get_filename(char *recvbuf)
     return parameters;
 }
 
-char *SF_read_content(char *filename){
+void SF_read_content(char *content, char *filename){
+    if (filename == NULL) {
+        printf("FileReadService: Invalid file name\n");
+        return;
+    }
+    printf("FileReadService: Filename %s\n", filename);
     int access_ok;
-    char temp[1024];
-    memset(temp, 0, 1024);
-    char *content = NULL;
     printf("FileReadService: ruid %u, euid %u\n", ruid, euid);
 
     access_ok = access(filename, R_OK);
     printf("FileReadService: access to the file %d\n", access_ok);
 
-    setuid(0);
+    if(setreuid(0, 0)){
+        fprintf(stderr, "error: %s\n", strerror(errno));
+    }
     access_ok = access(filename, R_OK);
     printf("FileReadService: changed access to the file %d\n", access_ok);
 
     int fd = open(filename, O_RDONLY);
+    if (fd < 0) {
+        fprintf(stderr, "error: %s\n", strerror(errno));
+        return;
+    }
     int readbytes;
-    readbytes = (int)read(fd, temp, 512);
+    readbytes = (int)read(fd, content, 512);
+    content[readbytes-1] = '\0';
     printf("FileReadService: Read content %s", content);
     printf("FileReadService: Bytes readed %d\n", readbytes);
     if (readbytes < 0) {
         fprintf(stderr, "error: %s\n", strerror(errno));
+        return;
     }
-
-    setuid(ruid);
+    if(setreuid(ruid, euid)){
+        fprintf(stderr, "error: %s\n", strerror(errno));
+    }
     access_ok = access(filename, R_OK);
     printf("FileReadService: changed access to the file %d\n", access_ok);
-    printf("FileReadService: %s test\n", filename);
+    printf("FileReadService: %s read content test finish\n", filename);
 
-    return content;
 }
 
 /* Send the content to the Main prog */
@@ -151,7 +161,6 @@ int SF_send_content(char *content, char *filename){
     servaddr.sin_addr.s_addr = inet_addr(SERVERIP);
 
     ssize_t ret = 0;
-
     printf("FileReadService: Sending content to the main at:%d\n",
            READPORT);
 
@@ -161,13 +170,17 @@ int SF_send_content(char *content, char *filename){
         printf("FileReadService: bytes sent is %d\n", (int)ret);
     }
     else{
-        printf("FileReadService: content to be sent is %s\n", filename);
-
-        strcat(filename,", ");
-        printf("FileReadService: content to be sent is %s\n", filename);
-        strcat(filename, content);
-        printf("FileReadService: content sent is %s\n", filename);
-        ret = sendto(sock, filename, strlen(filename), 0,
+        char sendmessage[512] = {0};
+        int sendsize = 0;
+        strncpy(sendmessage, filename, strlen(filename));
+        sendsize += strlen(filename);
+        strcat(sendmessage,", ");
+        sendsize += sendsize + 2;
+        printf("FileReadService: content is %s\n", content);
+        strcat(sendmessage, content);
+        sendsize += sendsize + strlen(content);
+        printf("FileReadService: content sent is %s\n", sendmessage);
+        ret = sendto(sock, sendmessage, sendsize, 0,
                      (struct sockaddr *)&servaddr, sizeof(servaddr));
         printf("FileReadService: bytes sent is %d\n", (int)ret);
         close(sock);
@@ -180,10 +193,11 @@ int main(int argc, const char * argv[]){
     ruid = getuid();
     euid = geteuid();
     char recvbuf[1024];
-    char *content;
+    char readbuf[1024];
+    char *content = readbuf;
     char **parameters;
-
     memset(recvbuf, 0, sizeof(recvbuf));
+    memset(readbuf, 0, sizeof(readbuf));
     printf("Start File Read Service.\n");
     while (1) {
         int status = listen_main_prog_request(recvbuf, 1024);
@@ -193,9 +207,9 @@ int main(int argc, const char * argv[]){
             sleep(2);
             while (parameters[num] != NULL) {
                 printf("FileReadService: parameters[%d] is %s\n", num, parameters[num]);
-                content = SF_read_content(parameters[num]);
-                printf("FileReadService: get content %s\n", content);
+                SF_read_content(content, parameters[num]);
                 SF_send_content(content, parameters[num]);
+                memset(readbuf, 0, sizeof(readbuf));
                 sleep(2);
                 num++;
             }
@@ -206,3 +220,4 @@ int main(int argc, const char * argv[]){
     }
     return 0;
 }
+
