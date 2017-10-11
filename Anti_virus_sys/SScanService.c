@@ -48,8 +48,6 @@ int SS_listen_main_prog_request(char *recvbuf, int buf_size)
     while (1)
     {
         printf("ScanThreatService: Waiting for content\n");
-        printf("ScanThreatService: Please send request follow \"Main: file1, content\"\n");
-
         peerlen = sizeof(peeraddr);
         ssize_t n;
         n = recvfrom(sock, recvbuf, buf_size, 0,
@@ -67,35 +65,59 @@ int SS_listen_main_prog_request(char *recvbuf, int buf_size)
         {
             /* Threat: ack can be modified */
             char acknowlege_message[] =
-            "ScanThreatService: ack, request received";
-            printf("FileReadService: Received request \n");
+            "ScanThreatService: ack, content received";
+            printf("ScanThreatService: Received request \n");
             sendto(sock, acknowlege_message, strlen(acknowlege_message), 0,
                    (struct sockaddr *)&peeraddr, peerlen);
             close(sock);
+            printf("ScanThreatService: ACK Sent. \n");
             return 10;
         }
     }
     return 0;
 }
 
-char SS_scan_content(char* content){
-    FILE *fd;
+int SS_scan_content(char *content){
+    printf("ScanThreatService: Scan content start\n");
+
+    FILE *fp;
     char signature[512];
-    memset(signature, 0, sizeof(signature));
-    fd = fopen("file_db", "r");
-    fgets(signature, sizeof(signature), fd);
-    char *s = strstr(content, signature);       /* Determine infection */
-    printf("%s\n", s);
+    memset(signature, 0, 512);
+
+    if((fp = fopen("signature_db", "r")) == NULL){
+        fprintf(stderr, "error: %s\n", strerror(errno));
+        exit(EXIT_FAILURE);
+    }
+
+    printf("ScanThreatService: File opened\n");
+
+    char *s = NULL;
+    int num = 0;
+
+    while(fgets(signature, 512, fp)){
+        signature[4] = '\0';
+        s = strstr(content, signature);       /*Determine infection*/
+        printf("[%d] Scan: Signature %s\n", num, signature);
+        if (s == NULL) {
+            printf("[%d] Scan: Clean\n", num);
+        }
+        else{
+            printf("[%d] Scan: Infected, %s\n", num, s);
+            return 11;
+        }
+        num++;
+    }
+
+    //printf("%s\n", s);
+
     if (s == NULL) {
-        return 'c';
+        return 10;
     }
-    else{
-        return 'i';
-    }
-    return '!';
+
+    return 1;
 }
 
-int SS_send_status(char * status, char *filename){
+int SS_send_status(int *status, char *filename){
     int sock;
     if ((sock = socket(PF_INET, SOCK_DGRAM, 0)) < 0)
         ERR_EXIT("socket");
@@ -112,22 +134,24 @@ int SS_send_status(char * status, char *filename){
     printf("ScanThreatService: Sending content to the main at:%d\n",
            SCANPORT);
 
-    if (*status == 'F') {
+    if (*status == 100) {
         printf("ScanThreatService: EOF %d\n", (int)ret);
         ret = sendto(sock, "0", 1, 0, (struct sockaddr *)&servaddr, sizeof(servaddr));
         printf("ScanThreatService: bytes sent is %d\n", (int)ret);
     }
     else{
-        if(*status == 'i'){
+        if(*status == 11){
             strcat(filename,", infected");
             ret = sendto(sock, filename, strlen(filename), 0,
                          (struct sockaddr *)&servaddr, sizeof(servaddr));
+            printf("ScanThreatService: send %s\n", filename);
             printf("ScanThreatService: bytes sent is %d\n", (int)ret);
         }
-        else if (*status == 'c'){
+        else if (*status == 10){
             strcat(filename,", clean");
             ret = sendto(sock, filename, strlen(filename), 0,
                          (struct sockaddr *)&servaddr, sizeof(servaddr));
+            printf("ScanThreatService: send %s\n", filename);
             printf("ScanThreatService: bytes sent is %d\n", (int)ret);
         }
         close(sock);
@@ -140,12 +164,20 @@ int main(int argc, const char * argv[]){
     memset(recvbuf, 0, sizeof(recvbuf));
     printf("Start File Read Service.\n");
     while (1) {
-        int reqeusted = SS_listen_main_prog_request(recvbuf, 1024);
-        if(reqeusted == 10){
-            char status = SS_scan_content(recvbuf);
-            SS_send_status(status, recvbuf);
+        int request;
+        request = SS_listen_main_prog_request(recvbuf, 1024);
+        printf("ScanThreatService: get status %d\n", request);
+        printf("ScanThreatService: received buffer is %s\n", recvbuf);
+        if(request == 10){
+            printf("ScanThreatService: Start scan content\n");
+            int status = SS_scan_content(recvbuf);
+            sleep(3);
+            SS_send_status(&status, recvbuf);
         }
         sleep(2);
+        int eof = 100;
+        SS_send_status(&eof, NULL);
+        sleep(3);
     }
     return 0;
 }

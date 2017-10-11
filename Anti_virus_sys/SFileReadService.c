@@ -106,29 +106,35 @@ char **SF_get_filename(char *recvbuf)
     return parameters;
 }
 
-void SF_read_content(char *content, char *filename){
+char *SF_read_content(char *filename){
     int access_ok;
-    ruid = getuid();
-    euid = geteuid();
-    printf("ruid: %u, euid: %u\n", ruid, euid);
+    char temp[1024];
+    memset(temp, 0, 1024);
+    char *content = NULL;
+    printf("FileReadService: ruid %u, euid %u\n", ruid, euid);
 
     access_ok = access(filename, R_OK);
-    printf("access to the file %d\n", access_ok);
+    printf("FileReadService: access to the file %d\n", access_ok);
 
     setuid(0);
     access_ok = access(filename, R_OK);
-    printf("changed access to the file %d\n", access_ok);
+    printf("FileReadService: changed access to the file %d\n", access_ok);
 
     int fd = open(filename, O_RDONLY);
     int readbytes;
-    readbytes = (int)read(fd, content, 512);
-    printf("Read content: %s", content);
-    printf("Bytes readed: %d\n", readbytes);
+    readbytes = (int)read(fd, temp, 512);
+    printf("FileReadService: Read content %s", content);
+    printf("FileReadService: Bytes readed %d\n", readbytes);
+    if (readbytes < 0) {
+        fprintf(stderr, "error: %s\n", strerror(errno));
+    }
 
     setuid(ruid);
     access_ok = access(filename, R_OK);
-    printf("changed access to the file %d\n", access_ok);
+    printf("FileReadService: changed access to the file %d\n", access_ok);
+    printf("FileReadService: %s test\n", filename);
 
+    return content;
 }
 
 /* Send the content to the Main prog */
@@ -171,9 +177,12 @@ int SF_send_content(char *content, char *filename){
 
 
 int main(int argc, const char * argv[]){
+    ruid = getuid();
+    euid = geteuid();
     char recvbuf[1024];
-    char content[1024];
+    char *content;
     char **parameters;
+
     memset(recvbuf, 0, sizeof(recvbuf));
     printf("Start File Read Service.\n");
     while (1) {
@@ -183,8 +192,8 @@ int main(int argc, const char * argv[]){
             int num = 1;
             sleep(2);
             while (parameters[num] != NULL) {
-                printf("FileReadService: get parameters[%d]\n", num);
-                SF_read_content(content, parameters[num]);
+                printf("FileReadService: parameters[%d] is %s\n", num, parameters[num]);
+                content = SF_read_content(parameters[num]);
                 printf("FileReadService: get content %s\n", content);
                 SF_send_content(content, parameters[num]);
                 sleep(2);
