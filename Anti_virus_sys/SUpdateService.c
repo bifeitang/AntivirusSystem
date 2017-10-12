@@ -15,13 +15,22 @@
 #define UPDATEPORT  4950
 #define SERVERPORT  3490    /* Port to recevie TCP packages from server */
 #define BUFFER_SIZE 1024
-char* SERVER_IP = "127.0.0.1";
+char* SERVER_IP =   "127.0.0.1";
 
 #define ERR_EXIT(m) \
 do { \
 perror(m); \
 exit(EXIT_FAILURE); \
 } while (0)
+
+/* Get correspoinding IP address of server */
+void *get_in_addr(struct sockaddr *sa)
+{
+    if(sa->sa_family == AF_INET) {
+        return &(((struct sockaddr_in *)sa)->sin_addr);
+    }
+    return &(((struct sockaddr_in6 *)sa)->sin6_addr);
+}
 
 /* Receive Virus Signature */
 int receive_virus_signature(char *signature){
@@ -35,17 +44,14 @@ int receive_virus_signature(char *signature){
     servaddr.sin_port = htons(SERVERPORT);
     servaddr.sin_addr.s_addr = inet_addr(SERVER_IP);
 
-    printf("Connecting to Threat Signature Server at %s:%d\n",
-           SERVER_IP,SERVERPORT);
-
     if (connect(sock_cli, (struct sockaddr *)&servaddr, sizeof(servaddr)) < 0)
     {
         perror("connect");
         exit(1);
     }
-    printf("UpdateService: Connection Established\n");
+    //printf("UpdateService: Connection Established\n");
     recv(sock_cli, signature, sizeof(signature),0); //Receive Signature
-    printf("UpdateService: Virus Signature Received from server: %s\n",signature);
+    printf("UpdateService: Virus Signature Received is %s\n",signature);
 
     close(sock_cli);
     return 0;
@@ -63,7 +69,7 @@ int listen_main_prog_request(){
     servaddr.sin_port = htons(UPDATEPORT);
     servaddr.sin_addr.s_addr = htonl(INADDR_ANY);
 
-    printf("UpdateService: Listening to the request from main at:%d\n",UPDATEPORT);
+    printf("UpdateService: start listening request at:%d\n", UPDATEPORT);
     if (bind(sock, (struct sockaddr *)&servaddr, sizeof(servaddr)) < 0)
         ERR_EXIT("bind error");
 
@@ -75,8 +81,6 @@ int listen_main_prog_request(){
 
     while (1)
     {
-        printf("UpdateService: Start Loop\n");
-
         peerlen = sizeof(peeraddr);
         memset(recvbuf, 0, sizeof(recvbuf));
         n = recvfrom(sock, recvbuf, sizeof(recvbuf), 0,
@@ -92,7 +96,9 @@ int listen_main_prog_request(){
         else if(n > 0)
         {
             printf("UpdateService: Received request \n");
-            sendto(sock, recvbuf, n, 0,
+            char acknowlege_message[] =
+            "UpdateService: ack, content received";
+            sendto(sock, acknowlege_message, strlen(acknowlege_message), 0,
                    (struct sockaddr *)&peeraddr, peerlen);
             close(sock);
             return 10;
@@ -101,8 +107,6 @@ int listen_main_prog_request(){
     return 0;
 }
 
-
-/* Update DB text file*/
 int append_signature(char *signature){
     int fd;
     char db_path[] = "threat_db.txt";
@@ -112,16 +116,18 @@ int append_signature(char *signature){
         exit(EXIT_FAILURE);
     }
     char appendn[] = "\n";
-    printf("Write into threat_db.txt with \"%s\"\n", signature);
+    printf("UpdateService: Write into threat_db.txt with \"%s\"\n", signature);
     write(fd, signature, strlen(signature));
     write(fd, appendn, strlen(appendn));
     close(fd);
     return 0;
 }
 
+/* Update DB text file*/
+
 int main(int argc, const char * argv[])
 {
-    printf("Start Update Signature Service.\n");
+    printf("================ Start Update Signature Service ================\n");
     while (1) {
         int status = listen_main_prog_request();
         if(status == 10){
@@ -129,8 +135,8 @@ int main(int argc, const char * argv[])
             signature[4] = '\0';
             receive_virus_signature(signature);
             append_signature(signature);
-            printf("received signature: %s\n", signature);
         }
     }
     return 0;
 }
+

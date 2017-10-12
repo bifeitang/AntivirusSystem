@@ -3,13 +3,19 @@
 #include <fcntl.h>
 #include <netinet/in.h>
 #include <netdb.h>
+#include <signal.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
+#include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <fcntl.h>
 #include <unistd.h>
+//#include <seccomp.h>
+
 
 #define SCANPORT  4952
 #define MAXFILENUM  10
@@ -22,9 +28,50 @@ perror(m); \
 exit(EXIT_FAILURE); \
 } while (0)
 
+/* Set up seccomp filters */
+/*
+ void setup_filter(){
+ int ret = 0;
+
+ scmp_filter_ctx ctx;
+
+ ctx = seccomp_init(SCMP_ACT_KILL);
+ if(ctx == NULL){
+ fprintf(stderr, "error: Initialization failed.\n");
+ }
+
+ if(!ret)
+ ret = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(fstat), 0);
+ if(!ret)
+ ret = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(socket), 0);
+ if(!ret)
+ ret = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(bind), 0);
+ if(!ret)
+ ret = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(sendto), 0);
+ if(!ret)
+ ret = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(recvfrom), 0);
+ if(!ret)
+ ret = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(access), 0);
+ if(!ret)
+ ret = seccomp_rule_add_exact(ctx, SCMP_ACT_ALLOW, SCMP_SYS(write), 1,
+ SCMP_A0(SCMP_CMP_EQ, STDOUT_FILENO));
+ if(!ret)
+ ret = seccomp_rule_add_exact(ctx, SCMP_ACT_ALLOW, SCMP_SYS(write), 1,
+ SCMP_A0(SCMP_CMP_EQ, STDERR_FILENO));
+ if(!ret)
+ ret = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(close), 0);
+ if(!ret)
+ ret = seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(nanosleep), 0);
+ if(ret)
+ fprintf(stderr, "error: Filter setting failed.\n");
+ seccomp_load(ctx);
+ }
+ */
+
 /* Listen to request from main service */
 int SS_listen_main_prog_request(char *recvbuf, int buf_size)
 {
+    printf("\n");
     int sock;
     if ((sock = socket(PF_INET, SOCK_DGRAM, 0)) < 0)
         ERR_EXIT("socket error");
@@ -34,9 +81,6 @@ int SS_listen_main_prog_request(char *recvbuf, int buf_size)
     servaddr.sin_family = AF_INET;
     servaddr.sin_port = htons(SCANPORT);
     servaddr.sin_addr.s_addr = htonl(INADDR_ANY);
-
-    printf("ScanThreatService: Listening to requests from main at:%d\n",
-           SCANPORT);
 
     if (bind(sock, (struct sockaddr *)&servaddr, sizeof(servaddr)) < 0)
         ERR_EXIT("bind error");
@@ -70,14 +114,16 @@ int SS_listen_main_prog_request(char *recvbuf, int buf_size)
             sendto(sock, acknowlege_message, strlen(acknowlege_message), 0,
                    (struct sockaddr *)&peeraddr, peerlen);
             close(sock);
-            printf("ScanThreatService: ACK Sent. \n");
+            printf("ScanThreatService: ACK Sent.\n");
             return 10;
         }
     }
+    printf("\n");
     return 0;
 }
 
 int SS_scan_content(char *content){
+    printf("\n");
     printf("ScanThreatService: Scan content start\n");
 
     FILE *fp;
@@ -88,8 +134,6 @@ int SS_scan_content(char *content){
         fprintf(stderr, "error: %s\n", strerror(errno));
         exit(EXIT_FAILURE);
     }
-
-    printf("ScanThreatService: File opened\n");
 
     char *s = NULL;
     int num = 0;
@@ -108,12 +152,10 @@ int SS_scan_content(char *content){
         num++;
     }
 
-    //printf("%s\n", s);
-
     if (s == NULL) {
         return 10;
     }
-
+    printf("\n");
     return 1;
 }
 
@@ -135,24 +177,21 @@ int SS_send_status(int *status, char *filename){
            SCANPORT);
 
     if (*status == 100) {
-        printf("ScanThreatService: EOF %d\n", (int)ret);
+        printf("ScanThreatService: sent EOF to Main%d\n", (int)ret);
         ret = sendto(sock, "0", 1, 0, (struct sockaddr *)&servaddr, sizeof(servaddr));
-        printf("ScanThreatService: bytes sent is %d\n", (int)ret);
     }
     else{
         if(*status == 11){
             strcat(filename,", infected");
             ret = sendto(sock, filename, strlen(filename), 0,
                          (struct sockaddr *)&servaddr, sizeof(servaddr));
-            printf("ScanThreatService: send %s\n", filename);
-            printf("ScanThreatService: bytes sent is %d\n", (int)ret);
+            printf("ScanThreatService: sent %s\n", filename);
         }
         else if (*status == 10){
             strcat(filename,", clean");
             ret = sendto(sock, filename, strlen(filename), 0,
                          (struct sockaddr *)&servaddr, sizeof(servaddr));
-            printf("ScanThreatService: send %s\n", filename);
-            printf("ScanThreatService: bytes sent is %d\n", (int)ret);
+            printf("ScanThreatService: sent %s\n", filename);
         }
         close(sock);
     }
@@ -160,16 +199,15 @@ int SS_send_status(int *status, char *filename){
 }
 
 int main(int argc, const char * argv[]){
+    //setup_filter();
     char recvbuf[1024];
     memset(recvbuf, 0, sizeof(recvbuf));
-    printf("Start File Read Service.\n");
+    printf("===================== Start Scan Service =====================\n");
     while (1) {
         int request;
         request = SS_listen_main_prog_request(recvbuf, 1024);
-        printf("ScanThreatService: get status %d\n", request);
         printf("ScanThreatService: received buffer is %s\n", recvbuf);
         if(request == 10){
-            printf("ScanThreatService: Start scan content\n");
             int status = SS_scan_content(recvbuf);
             sleep(3);
             SS_send_status(&status, recvbuf);
@@ -181,3 +219,4 @@ int main(int argc, const char * argv[]){
     }
     return 0;
 }
+

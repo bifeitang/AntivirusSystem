@@ -36,9 +36,6 @@ int listen_main_prog_request(char *recvbuf, int buf_size)
     servaddr.sin_port = htons(READPORT);
     servaddr.sin_addr.s_addr = htonl(INADDR_ANY);
 
-    printf("FileReadService: Listening to requests from main at:%d\n",
-           READPORT);
-
     if (bind(sock, (struct sockaddr *)&servaddr, sizeof(servaddr)) < 0)
         ERR_EXIT("bind error");
 
@@ -48,8 +45,7 @@ int listen_main_prog_request(char *recvbuf, int buf_size)
 
     while (1)
     {
-        printf("FileReadService: Waiting for filename\n");
-        printf("FileReadService: Please send request follow \"Main: file1, file2, ..., filen\"\n");
+        printf("FileReadService: Please send request follow \"Main: file1, file2, ..., file10\"\n");
 
         peerlen = sizeof(peeraddr);
         ssize_t n;
@@ -97,8 +93,6 @@ char **SF_get_filename(char *recvbuf)
     parameter = strtok(recvbuf, delim);
     while (parameter != NULL) {
         parameters[para_num] = parameter;
-        printf("FileReadService: Parameter %d %s\n",
-               para_num, parameters[para_num]);
         para_num++;
         parameter = strtok(NULL, delim);
     }
@@ -107,6 +101,7 @@ char **SF_get_filename(char *recvbuf)
 }
 
 void SF_read_content(char *content, char *filename){
+    printf("\n");
     if (filename == NULL) {
         printf("FileReadService: Invalid file name\n");
         return;
@@ -132,7 +127,6 @@ void SF_read_content(char *content, char *filename){
     int readbytes;
     readbytes = (int)read(fd, content, 512);
     content[readbytes-1] = '\0';
-    printf("FileReadService: Read content %s", content);
     printf("FileReadService: Bytes readed %d\n", readbytes);
     if (readbytes < 0) {
         fprintf(stderr, "error: %s\n", strerror(errno));
@@ -143,12 +137,12 @@ void SF_read_content(char *content, char *filename){
     }
     access_ok = access(filename, R_OK);
     printf("FileReadService: changed access to the file %d\n", access_ok);
-    printf("FileReadService: %s read content test finish\n", filename);
-
+    printf("\n");
 }
 
 /* Send the content to the Main prog */
 int SF_send_content(char *content, char *filename){
+    printf("\n");
     int sock;
     if ((sock = socket(PF_INET, SOCK_DGRAM, 0)) < 0)
         ERR_EXIT("socket");
@@ -167,7 +161,6 @@ int SF_send_content(char *content, char *filename){
     if (content == NULL && filename == NULL) {
         printf("FileReadService: EOF %d\n", (int)ret);
         ret = sendto(sock, "0", 1, 0, (struct sockaddr *)&servaddr, sizeof(servaddr));
-        printf("FileReadService: bytes sent is %d\n", (int)ret);
     }
     else{
         char sendmessage[512] = {0};
@@ -176,10 +169,8 @@ int SF_send_content(char *content, char *filename){
         sendsize += strlen(filename);
         strcat(sendmessage,", ");
         sendsize += sendsize + 2;
-        printf("FileReadService: content is %s\n", content);
         strcat(sendmessage, content);
         sendsize += sendsize + strlen(content);
-        printf("FileReadService: content sent is %s\n", sendmessage);
         ret = sendto(sock, sendmessage, sendsize, 0,
                      (struct sockaddr *)&servaddr, sizeof(servaddr));
         printf("FileReadService: bytes sent is %d\n", (int)ret);
@@ -198,7 +189,7 @@ int main(int argc, const char * argv[]){
     char **parameters;
     memset(recvbuf, 0, sizeof(recvbuf));
     memset(readbuf, 0, sizeof(readbuf));
-    printf("Start File Read Service.\n");
+    printf("=================== Start File Read Service ===================\n");
     while (1) {
         int status = listen_main_prog_request(recvbuf, 1024);
         if(status == 10){
@@ -206,7 +197,6 @@ int main(int argc, const char * argv[]){
             int num = 1;
             sleep(2);
             while (parameters[num] != NULL) {
-                printf("FileReadService: parameters[%d] is %s\n", num, parameters[num]);
                 SF_read_content(content, parameters[num]);
                 SF_send_content(content, parameters[num]);
                 memset(readbuf, 0, sizeof(readbuf));
